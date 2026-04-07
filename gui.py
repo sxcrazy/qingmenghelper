@@ -160,24 +160,28 @@ async def monitor_one_game(connection):
 async def connect(connection):
     gui_print("成功连接到英雄联盟客户端！")
     resp_sum = await connection.request('get', '/lol-summoner/v1/current-summoner')
-    if resp_sum.status == 200:
-        data = await resp_sum.json()
-        name = data.get('gameName')
-        level = data.get('summonerLevel')
-        number = data.get('tagLine')
-        xpnow = data.get('xpSinceLastLevel')
-        xpnext = data.get('xpUntilNextLevel')
-        gui_print(f"你好，召唤师：{name}#{number}，等级 {level}，距下级还需 {xpnext - xpnow}")
-    else:
-        gui_print("获取召唤师信息失败")
+# 1. 获取召唤师信息（带重试机制）
+    max_retries = 3          # 最多尝试3次
+    retry_delay = 3          # 每次失败后等待3秒再试
 
-    while True:
-        try:
-            await monitor_one_game(connection)
-            gui_print("\n===== 监测结束，等待下一局开始 =====")
-        except Exception as e:
-            gui_print(f"监测过程出错: {e}，5秒后重试...")
-            await asyncio.sleep(5)
+    for attempt in range(1, max_retries + 1):
+        resp_sum = await connection.request('get', '/lol-summoner/v1/current-summoner')
+        if resp_sum.status == 200:
+            data = await resp_sum.json()
+            name = data.get('gameName')
+            level = data.get('summonerLevel')
+            number = data.get('tagLine')
+            xpnow = data.get('xpSinceLastLevel')
+            xpnext = data.get('xpUntilNextLevel')
+            print(f"你好，召唤师：{name}#{number}，等级 {level}，距下级还需 {xpnext - xpnow} 经验值")
+            break          # 成功获取，跳出重试循环
+        else:
+            print(f"第 {attempt} 次获取召唤师信息失败 (状态码: {resp_sum.status})，{retry_delay}秒后重试...")
+            if attempt < max_retries:
+                await asyncio.sleep(retry_delay)
+            else:
+                print("多次获取召唤师信息失败，请检查客户端是否正常登录")
+                return     # 彻底退出 connect 函数
 
 def run_monitor():
     """在后台线程中运行 connector"""
@@ -188,7 +192,7 @@ def run_monitor():
 class AutoMonitorGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("清梦-英雄联盟助手")
+        self.root.title("清梦-英雄联盟助手beta0.1")
         self.root.geometry("800x600")
 
         # 创建文本框显示日志
