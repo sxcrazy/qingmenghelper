@@ -160,9 +160,9 @@ async def monitor_one_game(connection):
 async def connect(connection):
     gui_print("成功连接到英雄联盟客户端！")
     resp_sum = await connection.request('get', '/lol-summoner/v1/current-summoner')
-# 1. 获取召唤师信息（带重试机制）
-    max_retries = 3          # 最多尝试3次
-    retry_delay = 3          # 每次失败后等待3秒再试
+    #获取召唤师信息
+    max_retries = 3          
+    retry_delay = 3          
 
     for attempt in range(1, max_retries + 1):
         resp_sum = await connection.request('get', '/lol-summoner/v1/current-summoner')
@@ -174,17 +174,16 @@ async def connect(connection):
             xpnow = data.get('xpSinceLastLevel')
             xpnext = data.get('xpUntilNextLevel')
             print(f"你好，召唤师：{name}#{number}，等级 {level}，距下级还需 {xpnext - xpnow} 经验值")
-            break          # 成功获取，跳出重试循环
+            break          
         else:
             print(f"第 {attempt} 次获取召唤师信息失败 (状态码: {resp_sum.status})，{retry_delay}秒后重试...")
             if attempt < max_retries:
                 await asyncio.sleep(retry_delay)
             else:
                 print("多次获取召唤师信息失败，请检查客户端是否正常登录")
-                return     # 彻底退出 connect 函数
+                return     
 
 def run_monitor():
-    """在后台线程中运行 connector"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     connector.start()   # 启动并阻塞在线程中
