@@ -28,7 +28,7 @@
 - Python 3.8+（如需从源码运行）
 
 ### 从源码运行
-1. 克隆本仓库
+1.克隆本仓库
    ```bash
    git clone https://github.com/你的用户名/你的仓库名.git
    cd 你的仓库名
@@ -38,7 +38,7 @@
    pip install lcu-driver requests
 
 3.运行
-
+   ```bash
    python gui.py
 
 #简易食用方法：
