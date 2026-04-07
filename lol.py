@@ -171,17 +171,27 @@ async def connect(connection):
 
     # 1. 获取召唤师信息
     resp_sum = await connection.request('get', '/lol-summoner/v1/current-summoner')
-    if resp_sum.status == 200:
-        data = await resp_sum.json()
-        name = data.get('gameName')
-        level = data.get('summonerLevel')
-        number = data.get('tagLine')
-        xpnow = data.get('xpSinceLastLevel')
-        xpnext = data.get('xpUntilNextLevel')
-        print(f"你好，召唤师：{name}#{number}  #{tagLine}  等级 {level}  距下级还需 {xpnext - xpnow}经验值")
-    else:
-        await asyncio.sleep(20)
-        print("获取召唤师信息失败")
+    max_retries = 3          
+    retry_delay = 3          
+
+    for attempt in range(1, max_retries + 1):
+        resp_sum = await connection.request('get', '/lol-summoner/v1/current-summoner')
+        if resp_sum.status == 200:
+            data = await resp_sum.json()
+            name = data.get('gameName')
+            level = data.get('summonerLevel')
+            number = data.get('tagLine')
+            xpnow = data.get('xpSinceLastLevel')
+            xpnext = data.get('xpUntilNextLevel')
+            print(f"你好，召唤师：{name}#{number}，等级 {level}，距下级还需 {xpnext - xpnow} 经验值")
+            break          
+        else:
+            print(f"第 {attempt} 次获取召唤师信息失败 (状态码: {resp_sum.status})，{retry_delay}秒后重试...")
+            if attempt < max_retries:
+                await asyncio.sleep(retry_delay)
+            else:
+                print("多次获取召唤师信息失败，请检查客户端是否正常登录")
+                return     
 
     # 无限循环，持续监测对局
     while True:
