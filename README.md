@@ -46,8 +46,8 @@
    python gui.py
    ```
 
-## 简易食用方法：
+### 简易食用方法：
 
-从Releases下载清梦助手.zip
+· 从Releases下载清梦助手.zip
 
-解压并打开.exe文件
+· 解压并打开.exe文件
