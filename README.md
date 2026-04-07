@@ -28,6 +28,7 @@
 - Python 3.8+（如需从源码运行）
 
 ### 从源码运行
+
 1.克隆本仓库
 
    ```bash
@@ -36,12 +37,10 @@
 
 2.安装依赖
 
-   ```bash
    pip install lcu-driver requests
 
 3.运行
 
-   ```bash
    python gui.py
 
 #简易食用方法：
