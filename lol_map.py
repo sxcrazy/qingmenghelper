@@ -5,12 +5,12 @@ import requests
 
 # 获取 exe 所在目录（用于存放 data 缓存文件）
 def get_exe_dir():
-    """返回 exe 所在目录（开发环境返回脚本所在目录）"""
+    """返回 exe 所在目录"""
     if getattr(sys, 'frozen', False):
         # 打包后：sys.executable 是 exe 的完整路径
         return os.path.dirname(sys.executable)
     else:
-        # 开发环境：返回当前脚本所在目录
+        #返回当前所在目录
         return os.path.dirname(os.path.abspath(__file__))
 
 # 缓存文件路径：exe 同目录下的 data 文件夹
@@ -18,7 +18,7 @@ DATA_DIR = os.path.join(get_exe_dir(), "data")
 CHAMPION_CACHE_FILE = os.path.join(DATA_DIR, "champion_cache.json")
 SPELL_CACHE_FILE = os.path.join(DATA_DIR, "spell_cache.json")
 
-# 下载与加载逻辑
+# 下载与加载
 def download_champion_map():
     """下载英雄映射表并保存到 exe 同目录的 data 文件夹"""
     try:
