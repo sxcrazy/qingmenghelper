@@ -33,11 +33,11 @@
    git clone https://github.com/你的用户名/你的仓库名.git
    cd 你的仓库名
 
-#安装依赖
+2.安装依赖
    ```bash
    pip install lcu-driver requests
 
-#运行
+3.运行
    ```bash
    python gui.py
 
