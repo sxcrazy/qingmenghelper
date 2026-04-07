@@ -180,7 +180,7 @@ async def connect(connection):
         xpnext = data.get('xpUntilNextLevel')
         print(f"你好，召唤师：{name}#{number}  #{tagLine}  等级 {level}  距下级还需 {xpnext - xpnow}经验值")
     else:
-        await async.sleep(20)
+        await asyncio.sleep(20)
         print("获取召唤师信息失败")
 
     # 无限循环，持续监测对局
