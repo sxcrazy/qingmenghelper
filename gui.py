@@ -14,7 +14,6 @@ spell_map = load_spell_map()
 connector = Connector()
 
 # 将日志发送到 GUI 的队列
-
 log_queue = []
 
 def gui_print(*args, **kwargs):
