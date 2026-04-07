@@ -37,7 +37,7 @@
  ```bash
 pip install lcu-driver requests
 
-##运行
+#运行
  ```bash
 python gui.py
 
