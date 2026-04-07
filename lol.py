@@ -243,7 +243,10 @@ async def connect(connection):
                 data = await resp_sum.json()
                 name = data.get('gameName', data.get('displayName', '未知'))
                 level = data.get('summonerLevel', 0)
-                gui_print(f"你好，召唤师：{name}，等级 {level}")
+                tagLine = data.get('tagLine','未知')
+                xpnow = data.get('xpSinceLastLevel', 0)
+                xpnext = data.get('xpUntilNextLevel', 0)
+                gui_print(f"你好，召唤师：{name}#{tagLine}，等级 {level}，目前经验值{xpnow}，距离下级还需{xpnext-xpnow}")
                 break          
         except Exception:
             pass
