@@ -34,15 +34,17 @@
    ```bash
    git clone https://github.com/你的用户名/你的仓库名.git
    cd 你的仓库名
+   ```
 
 2.安装依赖
-
+   ```bash
    pip install lcu-driver requests
+   ```
 
 3.运行
-
+   ```bash
    python gui.py
-
+   ```
 #简易食用方法：
 
 从Releases下载清梦助手.zip
