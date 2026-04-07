@@ -34,7 +34,7 @@
    cd 你的仓库名
 
 2.安装依赖
-
+   '''bash
    pip install lcu-driver requests
 
 3.运行
