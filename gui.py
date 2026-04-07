@@ -173,14 +173,14 @@ async def connect(connection):
             number = data.get('tagLine')
             xpnow = data.get('xpSinceLastLevel')
             xpnext = data.get('xpUntilNextLevel')
-            print(f"你好，召唤师：{name}#{number}，等级 {level}，距下级还需 {xpnext - xpnow} 经验值")
+            gui_print(f"你好，召唤师：{name}#{number}，等级 {level}，距下级还需 {xpnext - xpnow} 经验值")
             break          
         else:
-            print(f"第 {attempt} 次获取召唤师信息失败 (状态码: {resp_sum.status})，{retry_delay}秒后重试...")
+            gui_print(f"第 {attempt} 次获取召唤师信息失败 (状态码: {resp_sum.status})，{retry_delay}秒后重试...")
             if attempt < max_retries:
                 await asyncio.sleep(retry_delay)
             else:
-                print("多次获取召唤师信息失败，请检查客户端是否正常登录")
+                gui_print("多次获取召唤师信息失败，请检查客户端是否正常登录")
                 return     
 
 def run_monitor():
