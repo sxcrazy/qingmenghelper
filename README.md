@@ -29,15 +29,18 @@
 
 ### 从源码运行
 1.克隆本仓库
+
    ```bash
    git clone https://github.com/你的用户名/你的仓库名.git
    cd 你的仓库名
 
 2.安装依赖
+
    ```bash
    pip install lcu-driver requests
 
 3.运行
+
    ```bash
    python gui.py
 
