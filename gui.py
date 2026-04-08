@@ -90,6 +90,18 @@ async def monitor_one_game(connection):
     error_count = 0
     while is_monitoring:
         try:
+    # 获取对局弹窗状态
+            rc_resp = await connection.request('get', '/lol-matchmaking/v1/ready-check')
+            if rc_resp.status == 200:
+                rc_data = await rc_resp.json()
+        # 监测确认弹窗
+                if rc_data.get('state') == 'InProgress' and rc_data.get('playerResponse') == 'None':
+            # 发送接受请求
+                    await connection.request('post', '/lol-matchmaking/v1/ready-check/accept')
+                    gui_print("\n[系统] 已为您自动接受对局！")
+        except Exception:
+            pass 
+        try:
             resp = await connection.request('get', '/lol-gameflow/v1/session')
             error_count = 0  # 只要成功一次，证明客户端没死，立刻清零
             if resp.status == 200:
@@ -106,6 +118,8 @@ async def monitor_one_game(connection):
 
     if not is_monitoring:
         return
+    
+
 
     # 2. 获取选人信息
     try:
