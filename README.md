@@ -55,7 +55,9 @@
 
 2.安装依赖
    ```bash
-   pip install lcu-driver requests
+   pip install lcu-driver
+
+   pip install PySide6
    ```
 
 3.运行
