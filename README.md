@@ -47,8 +47,8 @@
 1.克隆本仓库
 
    ```bash
-   git clone https://github.com/你的用户名/你的仓库名.git
-   cd 你的仓库名
+   git clone https://github.com/sxcrazy/qingmenghelper.git
+   cd qingmenghelper
    ```
 
 2.安装依赖
@@ -58,7 +58,7 @@
 
 3.运行
    ```bash
-   python gui.py
+   python gui_new.py
    ```
 
 ### 简易食用方法：
