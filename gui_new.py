@@ -44,6 +44,76 @@ def print_search(*args,**kwargs):
     "输出到 战绩查询 页面"
     gui_print('search',*args,**kwargs)
 
+TIER_TRANSLATE = {
+    "IRON": "坚韧黑铁",
+    "BRONZE": "英勇黄铜",
+    "SILVER": "不屈白银",
+    "GOLD": "荣耀黄金",
+    "PLATINUM": "华贵铂金",
+    "EMERALD": "流光翡翠",     
+    "DIAMOND": "璀璨钻石",
+    "MASTER": "超凡大师",
+    "GRANDMASTER": "傲世宗师",
+    "CHALLENGER": "最强王者",
+    "NONE": "未定级"
+}
+
+async def get_player_rank(connection, puuid, player_name):
+    """
+    通过 PUUID 获取并打印玩家的单双排/灵活排位段位
+    """
+    try:
+        endpoint = f'/lol-ranked/v1/ranked-stats/{puuid}'
+        resp = await connection.request('get', endpoint)
+        
+        if resp.status != 200:
+            print_search(f"[提示] 无法获取 {player_name} 的段位信息")
+            return
+            
+        data = await resp.json()
+        queues = data.get('queues', [])
+        
+        solo_rank_str = "单双排: 未定级"
+        flex_rank_str = "灵活排位: 未定级"
+        
+        for q in queues:
+            q_type = q.get('queueType')
+            tier = q.get('tier', 'NONE')
+            division = q.get('division', 'NA')
+            lp = q.get('leaguePoints', 0)
+            wins = q.get('wins', 0)
+            losses = q.get('losses', 0)
+            
+            # 计算总胜率
+            total_games = wins + losses
+            win_rate = (wins / total_games * 100) if total_games > 0 else 0
+            
+            # 翻译成中文
+            cn_tier = TIER_TRANSLATE.get(tier, tier)
+            
+            # 大师以上兼容
+            if tier in ["MASTER", "GRANDMASTER", "CHALLENGER"]:
+                rank_display = f"{cn_tier} {lp}胜点"
+            elif tier == "NONE":
+                rank_display = "未定级"
+            else:
+                rank_display = f"{cn_tier}{division} {lp}胜点"
+                
+            # 拼接带胜率的字符串
+            if tier != "NONE":
+                rank_display += f" (胜率:{win_rate:.1f}%)"
+
+            # 归类
+            if q_type == 'RANKED_SOLO_5x5':
+                solo_rank_str = f"单双排: {rank_display}"
+            elif q_type == 'RANKED_FLEX_SR':
+                flex_rank_str = f"灵活排: {rank_display}"
+
+        print_search(f"\n【玩家段位】 {player_name} | {solo_rank_str} | {flex_rank_str}")
+
+    except Exception as e:
+        print_search(f"[错误] 获取段位异常：{e}")
+
 
 async def search_player_by_name(connection, game_name, tag_line):
     # 测试连接是否可用
@@ -73,6 +143,7 @@ async def search_player_by_name(connection, game_name, tag_line):
             if data and data[0].get('puuid'):
                 puuid = data[0]['puuid']
                 print_search(f"\n[系统] 找到玩家了！PUUID: {puuid[:8]}...")
+                await get_player_rank(connection, puuid, game_name)
                 await get_match_history(connection, puuid, game_name, label="【查询结果】")
             else:
                 print_search(f"\n[系统] 找不到名为 {game_name}#{tag_line} 的玩家，请检查拼写。")
@@ -128,20 +199,20 @@ async def get_match_history(connection, puuid, game_name, label=""):
         print_search(f"[错误] 获取战绩时发生异常: {e}")
 
 
-async def get_player_history(connection, player_puuid, player_name, label="玩家", champion_name=""):
+async def get_player_history(connection, player_puuid, player_name, label="玩家", champion_name="", tagLine=""):
     if not player_puuid:
         return
     try:
         endpoint = f'/lol-match-history/v1/products/lol/{player_puuid}/matches'
         resp = await connection.request('get', endpoint)
         if resp.status != 200:
-            print_monitor(f"[提示] 无法获取 {label} {player_name} 的战绩 (Status: {resp.status})")
+            print_monitor(f"[提示] 无法获取 {label} {player_name}{tagLine} 的战绩 (Status: {resp.status})")
             return
         data = await resp.json()
         matches = data.get('games', {}).get('games', [])
         game_count = min(20, len(matches))
         if game_count == 0:
-            print_monitor(f"[提示] {label} {player_name} 暂无对局记录")
+            print_monitor(f"[提示] {label} {player_name} {tagLine}暂无对局记录")
             return
 
         total_wins = 0
@@ -150,30 +221,43 @@ async def get_player_history(connection, player_puuid, player_name, label="玩�
         for match in matches[:game_count]:
             participant = match['participants'][0]
             stats = participant['stats']
-            if stats.get('win'):
-                total_wins += 1
-            total_kills += stats.get('kills', 0)
-            total_deaths += stats.get('deaths', 0)
-            total_assists += stats.get('assists', 0)
+            queueId = match.get('queueId', 0)
+            if queueId in [2400, 430, 3140, 1700]:
+                game_count -= 1
+                continue
+            else:
+                if stats.get('win'):
+                    total_wins += 1
+                total_kills += stats.get('kills', 0)
+                total_deaths += stats.get('deaths', 0)
+                total_assists += stats.get('assists', 0)
 
         win_rate = total_wins / game_count * 100
         avg_kda = float(total_kills + total_assists) if total_deaths == 0 else (total_kills + total_assists) / total_deaths
 
         score = (win_rate * 0.3) + (avg_kda * 10 * 0.7)
-        if score >= 80:
+        if score >= 50:
             tag = "通天代"
-        elif score >= 65:
+        elif score >= 45:
             tag = "小代"
-        elif score >= 50:
-            tag = "上等马"
         elif score >= 35:
+            tag = "上等马"
+        elif score >= 28:
             tag = "中等马"
-        elif score >= 20:
+        elif score >= 24:
             tag = "下等马"
         else:
             tag = "牛马"
 
-        display_name = f"[{champion_name}] {player_name}" if (label == "敌方" and champion_name and champion_name != "?") else f"{player_name}"
+                
+        # 完整的 名字#编号
+        full_name = f"{player_name}#{tagLine}" if tagLine and tagLine != "未知" else player_name
+
+        if label == "敌方" and champion_name and champion_name != "?":
+            display_name = f"[{champion_name}] {full_name}"
+        else:
+            display_name = full_name
+            
         print_monitor(f"[战绩] {label} {display_name} | 胜率 {win_rate:.1f}% | KDA {avg_kda:.2f} | 评分 {score:.1f} | {tag}")
     except Exception as e:
         print_monitor(f"[提示] 查询 {label} {player_name} 时发生错误：{e}")
@@ -209,7 +293,6 @@ async def monitor_one_game(connection):
                 rc_data = await rc_resp.json()
                 if rc_data.get('state') == 'InProgress' and rc_data.get('playerResponse') == 'None':
                     if main_window and main_window.auto_accept_cb.isChecked():
-                        await asyncio.sleep(1)
                         await connection.request('post', '/lol-matchmaking/v1/ready-check/accept')
                         print_monitor("\n[系统] 已为您自动接受对局！")
         except Exception:
@@ -260,7 +343,8 @@ async def monitor_one_game(connection):
                 if puuid:
                     champ_name = champion_map.get(str(member.get('championId', 0)), "?")
                     name = member.get('gameName', member.get('summonerName', '未知'))
-                    tasks.append(asyncio.create_task(get_player_history(connection, puuid, name, "队友", champ_name)))
+                    tagLine = member.get('tagLine', '未知')
+                    tasks.append(asyncio.create_task(get_player_history(connection, puuid, name, "队友", champ_name,tagLine)))
             if tasks:
                 await asyncio.gather(*tasks)
             print_monitor("===== 队友战绩查询完毕 =====")
@@ -309,8 +393,9 @@ async def monitor_one_game(connection):
                     puuid = player.get('puuid')
                     if puuid and puuid not in my_puuids:
                         name = player.get('summonerName', '未知')
+                        tagLine = player.get('tagLine', '未知')
                         champ_name = champion_map.get(str(player.get('championId', 0)), "?")
-                        enemy_tasks.append(asyncio.create_task(get_player_history(connection, puuid, name, "敌方", champ_name)))
+                        enemy_tasks.append(asyncio.create_task(get_player_history(connection, puuid, name, "敌方", champ_name,tagLine)))
 
                 if enemy_tasks:
                     await asyncio.gather(*enemy_tasks)
