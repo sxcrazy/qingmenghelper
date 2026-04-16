@@ -206,7 +206,6 @@ async def search_player_by_name(connection, game_name, tag_line):
                 puuid = data[0]['puuid']
                 print_search(f"\n[系统] 找到玩家了！PUUID: {puuid[:8]}...")
                 await get_player_rank(connection, puuid, game_name)
-                # 修复核心 2：手动搜索时，必须调用 detailed 版才有图标
                 await get_match_history_detailed(connection, puuid, game_name, tag_line)
             else:
                 print_search(f"\n[系统] 找不到名为 {game_name}#{tag_line} 的玩家，请检查拼写。")
