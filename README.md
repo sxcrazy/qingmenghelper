@@ -93,3 +93,11 @@
 - 首次加入自动接受对局功能（无法关闭）
 - 优化早期代码，修复已知 Bug
 
+## 界面预览
+![主页展示](imgs/home.png)
+![对战信息](images/monitor.png)
+![战绩查询](imgs/search.png)
+![符文管理](images/rune.png)
+![收藏符文](images/rune2.png)
+![出装推荐管理](images/item.png)
+
