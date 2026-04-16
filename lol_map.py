@@ -4,21 +4,22 @@ import json
 import requests
 
 # 获取 exe 所在目录（用于存放 data 缓存文件）
-def get_exe_dir():
-    """返回 exe 所在目录"""
+def get_data_dir():
+    """动态获取 data 文件夹的绝对路径"""
     if getattr(sys, 'frozen', False):
-        # 打包后：sys.executable 是 exe 的完整路径
-        return os.path.dirname(sys.executable)
+        # 如果是打包后的 exe，路径以 exe 所在目录为准
+        base_path = os.path.dirname(sys.executable)
     else:
-        #返回当前所在目录
-        return os.path.dirname(os.path.abspath(__file__))
+        # 如果是没打包的 py 脚本，路径以当前脚本所在目录为准
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, "data")
 
 # 缓存文件路径：exe 同目录下的 data 文件夹
-DATA_DIR = os.path.join(get_exe_dir(), "data")
+DATA_DIR = os.path.join(get_data_dir(), "data")
 CHAMPION_CACHE_FILE = os.path.join(DATA_DIR, "champion_cache.json")
 SPELL_CACHE_FILE = os.path.join(DATA_DIR, "spell_cache.json")
 
-# 下载与加载
+# 下载与加载逻辑
 def download_champion_map():
     """下载英雄映射表并保存到 exe 同目录的 data 文件夹"""
     try:
@@ -74,24 +75,24 @@ def download_spell_map():
         return {}
 
 def load_champion_map():
-    """加载英雄映射表（优先读取缓存，不存在则下载）"""
-    if os.path.exists(CHAMPION_CACHE_FILE):
-        print(f"发现英雄映射表缓存：{CHAMPION_CACHE_FILE}，直接加载...")
-        with open(CHAMPION_CACHE_FILE, "r", encoding="utf-8") as f:
+    # 使用绝对路径
+    filepath = os.path.join(get_data_dir(), 'champion_cache.json')
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
-    else:
-        print(f"未找到英雄缓存文件，开始下载...")
-        return download_champion_map()
+    except Exception as e:
+        print(f"英雄数据读取失败: {e}")
+        return {}
 
 def load_spell_map():
-    """加载技能映射表"""
-    if os.path.exists(SPELL_CACHE_FILE):
-        print(f"发现技能映射表缓存：{SPELL_CACHE_FILE}，直接加载...")
-        with open(SPELL_CACHE_FILE, "r", encoding="utf-8") as f:
+    # 使用绝对路径
+    filepath = os.path.join(get_data_dir(), 'spell_cache.json')
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
-    else:
-        print(f"未找到技能缓存文件，开始下载...")
-        return download_spell_map()
+    except Exception as e:
+        print(f"召唤师技能读取失败: {e}")
+        return {}
 
 # 测试
 if __name__ == "__main__":
