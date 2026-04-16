@@ -94,10 +94,15 @@
 - 优化早期代码，修复已知 Bug
 
 ## 界面预览
+### 主页显示
 ![主页展示](imgs/home.png)
-![对战信息](images/monitor.png)
+### 对战信息显示
+![对战信息](imgs/monitor.png)
+### 战绩查询页面
 ![战绩查询](imgs/search.png)
-![符文管理](images/rune.png)
-![收藏符文](images/rune2.png)
-![出装推荐管理](images/item.png)
+### 符文管理页面
+![符文管理](imgs/rune.png)
+![收藏符文](imgs/rune2.png)
+### 出装推荐页面
+![出装推荐管理](imgs/item.png)
 
