@@ -3,14 +3,15 @@ import asyncio
 import threading
 import queue
 import os
-from PySide6.QtCore import Qt, QTimer, QPoint, Signal
+from PySide6.QtCore import Qt, QTimer, QPoint, Signal, QPropertyAnimation, QEasingCurve, QRect
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QPushButton, QFrame,
     QLineEdit, QCheckBox, QTabWidget, QTextBrowser,
-    QComboBox, QCompleter, QMessageBox, QInputDialog
+    QComboBox, QCompleter, QMessageBox, QInputDialog,
+    QGraphicsDropShadowEffect
 )
-from PySide6.QtGui import QFont, QMouseEvent, QImage
+from PySide6.QtGui import QFont, QMouseEvent, QImage, QColor, QLinearGradient, QPainter
 
 # ================= 导入原有逻辑模块 =================
 from lcu_driver import Connector
@@ -24,15 +25,17 @@ from resource_manager import (
 is_monitoring_lock = threading.Lock()
 log_queue = queue.Queue()
 
-# ---- 紧凑/高级暗色调 ----
-COLOR_BG_MAIN = "#1a1b26"       
-COLOR_BG_CARD = "#24283b"       
-COLOR_TEXT_MAIN = "#c0caf5"     
-COLOR_TEXT_SUB = "#7aa2f7"      
-COLOR_ACCENT = "#7aa2f7"        
-COLOR_SUCCESS = "#9ece6a"       
-COLOR_DANGER = "#f7768e"        
-COLOR_WARN = "#e0af68"          
+# ---- 深邃暗色调 ----
+COLOR_BG_MAIN = "#0f1117"
+COLOR_BG_CARD = "#1a1d2e"
+COLOR_BG_ELEVATED = "#222640"
+COLOR_TEXT_MAIN = "#e2e8f0"
+COLOR_TEXT_SUB = "#8b9cf7"
+COLOR_ACCENT = "#8b9cf7"
+COLOR_ACCENT_DIM = "#5b6abf"
+COLOR_SUCCESS = "#7dcea0"
+COLOR_DANGER = "#f07178"
+COLOR_WARN = "#f5c26b"
 
 # 修复白格子占位符用的 1x1 透明像素 Base64
 TRANSPARENT_IMG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
@@ -869,25 +872,71 @@ class TitleBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
-        self.setFixedHeight(45)
+        self.setFixedHeight(52)
         self.drag_pos = QPoint()
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(15, 0, 10, 0)
+        layout.setContentsMargins(20, 0, 12, 0)
         
-        self.title_label = QLabel(" 清梦 - 英雄联盟助手")
-        self.title_label.setStyleSheet(f"color: {COLOR_TEXT_MAIN}; font-size: 30px; font-weight: bold; font-family: 'Microsoft YaHei', 'Segoe UI';")
+        # 左侧装饰线
+        accent_line = QLabel()
+        accent_line.setFixedSize(3, 22)
+        accent_line.setStyleSheet(f"background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 {COLOR_ACCENT}, stop:1 {COLOR_ACCENT_DIM}); border-radius: 1px;")
+        layout.addWidget(accent_line)
+        layout.addSpacing(10)
+        
+        self.title_label = QLabel("清梦助手")
+        self.title_label.setStyleSheet(f"""
+            color: {COLOR_TEXT_MAIN}; 
+            font-size: 18px; 
+            font-weight: bold; 
+            font-family: 'Microsoft YaHei', 'Segoe UI';
+            letter-spacing: 2px;
+        """)
         layout.addWidget(self.title_label)
+        
+        # 版本号
+        ver_label = QLabel("v0.2")
+        ver_label.setStyleSheet(f"""
+            color: {COLOR_ACCENT_DIM}; 
+            font-size: 11px; 
+            font-weight: bold;
+            background: rgba(139,156,247,0.08);
+            padding: 2px 8px;
+            border-radius: 8px;
+            margin-left: 8px;
+        """)
+        layout.addWidget(ver_label)
         layout.addStretch()
         
+        # 最小化按钮
         self.min_btn = QPushButton("—")
-        self.min_btn.setFixedSize(36, 30)
-        self.min_btn.setStyleSheet(f"QPushButton {{ background: transparent; color: {COLOR_TEXT_SUB}; border: none; font-size: 14px; border-radius: 4px; }} QPushButton:hover {{ background: rgba(255,255,255,0.1); color: {COLOR_TEXT_MAIN}; }}")
+        self.min_btn.setFixedSize(40, 32)
+        self.min_btn.setCursor(Qt.PointingHandCursor)
+        self.min_btn.setStyleSheet(f"""
+            QPushButton {{ 
+                background: transparent; color: rgba(255,255,255,0.35); border: none; 
+                font-size: 13px; border-radius: 6px; 
+            }} 
+            QPushButton:hover {{ 
+                background: rgba(255,255,255,0.08); color: {COLOR_TEXT_MAIN}; 
+            }}
+        """)
         self.min_btn.clicked.connect(self.parent.showMinimized)
         layout.addWidget(self.min_btn)
         
+        # 关闭按钮
         self.close_btn = QPushButton("✕")
-        self.close_btn.setFixedSize(36, 30)
-        self.close_btn.setStyleSheet(f"QPushButton {{ background: transparent; color: {COLOR_TEXT_SUB}; border: none; font-size: 14px; border-radius: 4px; }} QPushButton:hover {{ background: {COLOR_DANGER}; color: {COLOR_BG_MAIN}; }}")
+        self.close_btn.setFixedSize(40, 32)
+        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setStyleSheet(f"""
+            QPushButton {{ 
+                background: transparent; color: rgba(255,255,255,0.35); border: none; 
+                font-size: 13px; border-radius: 6px; 
+            }} 
+            QPushButton:hover {{ 
+                background: {COLOR_DANGER}; color: #fff; 
+            }}
+        """)
         self.close_btn.clicked.connect(self.parent.close)
         layout.addWidget(self.close_btn)
 
@@ -900,40 +949,42 @@ class TitleBar(QWidget):
             self.parent.move(event.globalPosition().toPoint() - self.drag_pos)
             event.accept()
 
-# 全局极简紧凑 QSS
+# 全局 QSS
 MODERN_QSS = f"""
 QMainWindow {{
     background: transparent;
 }}
 #central {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 {COLOR_BG_MAIN},
-        stop:1 #151720);
-    border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.08);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #12141f,
+        stop:0.5 #0f1117,
+        stop:1 #14162a);
+    border-radius: 14px;
+    border: 1px solid rgba(139,156,247,0.12);
 }}
 QTextBrowser {{
     background: transparent;
     color: {COLOR_TEXT_MAIN};
     border: none;
     padding: 0px;
+    selection-background-color: rgba(139,156,247,0.25);
 }}
 QScrollBar:horizontal {{
-    height: 0px; 
+    height: 0px;
 }}
 QScrollBar:vertical {{
     border: none;
     background: transparent;
-    width: 6px;
+    width: 5px;
     margin: 0px;
 }}
 QScrollBar::handle:vertical {{
-    background: rgba(255, 255, 255, 0.12);
-    min-height: 30px;
-    border-radius: 3px;
+    background: rgba(139,156,247,0.15);
+    min-height: 40px;
+    border-radius: 2px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background: rgba(255, 255, 255, 0.30);
+    background: rgba(139,156,247,0.35);
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0px;
@@ -942,95 +993,113 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 }}
 QTabWidget::pane {{
     background: transparent;
-    border-radius: 8px;
-    margin: 0px 12px 12px 12px;
+    border: none;
+    margin: 0px 16px 16px 16px;
+}}
+QTabBar {{
+    background: transparent;
 }}
 QTabBar::tab {{
     background: transparent;
-    color: {COLOR_TEXT_SUB};
-    padding: 14px 24px;
-    font-size: 15px;
+    color: rgba(255,255,255,0.35);
+    padding: 14px 28px;
+    font-size: 14px;
     font-weight: bold;
-    border-bottom: 3px solid transparent;
-    margin-right: 6px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-right: 4px;
 }}
 QTabBar::tab:selected {{
-    color: {COLOR_ACCENT};
-    border-bottom: 3px solid {COLOR_ACCENT};
-    background: rgba(122,162,247,0.06);
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
+    color: {COLOR_TEXT_MAIN};
+    border-bottom: 2px solid {COLOR_ACCENT};
+    background: rgba(139,156,247,0.05);
 }}
 QTabBar::tab:hover:!selected {{
-    color: {COLOR_TEXT_MAIN};
-    background: rgba(255, 255, 255, 0.03);
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
+    color: rgba(255,255,255,0.6);
+    background: rgba(255,255,255,0.02);
 }}
 QLineEdit {{
-    background-color: {COLOR_BG_CARD};
+    background-color: rgba(255,255,255,0.04);
     color: {COLOR_TEXT_MAIN};
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 6px;
-    padding: 0 14px;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 0 16px;
     font-size: 14px;
+    selection-background-color: rgba(139,156,247,0.3);
 }}
 QLineEdit:focus {{
-    border: 1px solid {COLOR_ACCENT};
+    border: 1px solid rgba(139,156,247,0.4);
+    background: rgba(139,156,247,0.04);
+}}
+QLineEdit:hover:!focus {{
+    border: 1px solid rgba(255,255,255,0.1);
 }}
 QPushButton {{
-    background-color: {COLOR_ACCENT};
-    color: {COLOR_BG_MAIN};
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {COLOR_ACCENT}, stop:1 {COLOR_ACCENT_DIM});
+    color: #0f1117;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-weight: bold;
     font-size: 14px;
 }}
 QPushButton:hover {{
-    background-color: #8bb4ff;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #a0b0ff, stop:1 #7b8ce0);
 }}
 QPushButton:pressed {{
-    background-color: #6a9ae8;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {COLOR_ACCENT_DIM}, stop:1 #4a5aa0);
 }}
 QPushButton:disabled {{
-    background-color: rgba(255,255,255,0.1);
-    color: rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.2);
 }}
 QCheckBox {{
     color: {COLOR_TEXT_MAIN};
     font-size: 14px;
     font-weight: bold;
+    spacing: 8px;
 }}
 QCheckBox::indicator {{
     width: 18px;
     height: 18px;
-    border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.2);
-    background: {COLOR_BG_CARD};
+    border-radius: 5px;
+    border: 1.5px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.03);
+}}
+QCheckBox::indicator:hover {{
+    border: 1.5px solid rgba(139,156,247,0.4);
 }}
 QCheckBox::indicator:checked {{
-    background: {COLOR_ACCENT};
-    border: 1px solid {COLOR_ACCENT};
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 {COLOR_ACCENT}, stop:1 {COLOR_ACCENT_DIM});
+    border: 1.5px solid {COLOR_ACCENT};
 }}
 QComboBox {{
-    background: {COLOR_BG_CARD};
+    background: rgba(255,255,255,0.04);
     color: {COLOR_TEXT_MAIN};
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 4px;
-    padding-left: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 4px 10px;
     font-size: 14px;
     font-weight: bold;
 }}
 QComboBox:hover {{
-    border: 1px solid {COLOR_ACCENT};
+    border: 1px solid rgba(139,156,247,0.3);
+}}
+QComboBox::drop-down {{
+    border: none;
+    width: 24px;
 }}
 QComboBox QAbstractItemView {{
-    background: {COLOR_BG_CARD};
+    background: {COLOR_BG_ELEVATED};
     color: {COLOR_TEXT_MAIN};
-    selection-background-color: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 4px;
+    selection-background-color: rgba(139,156,247,0.15);
+    border: 1px solid rgba(139,156,247,0.15);
+    border-radius: 6px;
     outline: none;
+    padding: 4px;
 }}
 """
 
@@ -1051,25 +1120,38 @@ class MainWindow(QMainWindow):
 
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        # 将原 920x680 扩大
-        self.setGeometry(100, 100, 1060, 780) 
+        self.setGeometry(100, 100, 1080, 800) 
         central_widget = QWidget(); central_widget.setObjectName("central")
         self.setCentralWidget(central_widget)
+
+        # 给主面板加阴影
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(40)
+        shadow.setColor(QColor(0, 0, 0, 120))
+        shadow.setOffset(0, 8)
+        central_widget.setGraphicsEffect(shadow)
 
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0); main_layout.setSpacing(0)
         self.title_bar = TitleBar(self); main_layout.addWidget(self.title_bar)
 
+        # 标题栏底部分割线
+        separator = QFrame()
+        separator.setFixedHeight(1)
+        separator.setStyleSheet("background: rgba(255,255,255,0.04);")
+        main_layout.addWidget(separator)
+
         search_layout = QHBoxLayout()
-        search_layout.setContentsMargins(15, 0, 15, 10); search_layout.setSpacing(10); search_layout.addStretch()
+        search_layout.setContentsMargins(20, 8, 20, 12); search_layout.setSpacing(12); search_layout.addStretch()
         
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("输入 名字#编号 查战绩...")
-        self.search_input.setFixedSize(260, 34)
+        self.search_input.setFixedSize(280, 38)
         search_layout.addWidget(self.search_input)
 
         self.search_btn = QPushButton("搜索")
-        self.search_btn.setFixedSize(90, 34)
+        self.search_btn.setFixedSize(100, 38)
+        self.search_btn.setCursor(Qt.PointingHandCursor)
         self.search_btn.clicked.connect(self.start_search)
         self.search_btn.setEnabled(False)
         search_layout.addWidget(self.search_btn)
@@ -1079,24 +1161,30 @@ class MainWindow(QMainWindow):
 
         home_widget = QWidget()
         home_layout = QVBoxLayout(home_widget)
-        home_layout.setContentsMargins(12, 12, 12, 12)
+        home_layout.setContentsMargins(12, 8, 12, 12)
         
         auto_panel = QFrame()
-        auto_panel.setStyleSheet(f"QFrame {{ background: rgba(0,0,0,0.15); border-radius: 6px; border: 1px solid rgba(255,255,255,0.03); }}")
+        auto_panel.setStyleSheet(f"""
+            QFrame {{ 
+                background: rgba(255,255,255,0.02); 
+                border-radius: 10px; 
+                border: 1px solid rgba(255,255,255,0.04); 
+            }}
+        """)
         auto_layout = QHBoxLayout(auto_panel)
-        auto_layout.setContentsMargins(15, 12, 15, 12)
+        auto_layout.setContentsMargins(20, 14, 20, 14)
 
-        self.auto_pick_cb = QCheckBox("启用自动秒选")
+        self.auto_pick_cb = QCheckBox("自动秒选")
         self.auto_pick_cb.setStyleSheet(f"color: {COLOR_WARN}; font-size:14px;")
         self.auto_pick_combo = QComboBox()
         self.auto_pick_combo.setEditable(True)
-        self.auto_pick_combo.setFixedSize(140, 30)
+        self.auto_pick_combo.setFixedSize(150, 32)
 
-        self.auto_ban_cb = QCheckBox("启用自动秒禁")
+        self.auto_ban_cb = QCheckBox("自动秒禁")
         self.auto_ban_cb.setStyleSheet(f"color: {COLOR_DANGER}; font-size:14px;")
         self.auto_ban_combo = QComboBox()
         self.auto_ban_combo.setEditable(True)
-        self.auto_ban_combo.setFixedSize(140, 30)
+        self.auto_ban_combo.setFixedSize(150, 32)
 
         champ_names = sorted(list(champion_map.values()))
         self.auto_pick_combo.addItems([""] + champ_names)
@@ -1125,14 +1213,30 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.tab_widget)
         
+        # 底部分割线
+        bottom_sep = QFrame()
+        bottom_sep.setFixedHeight(1)
+        bottom_sep.setStyleSheet("background: rgba(255,255,255,0.04);")
+        main_layout.addWidget(bottom_sep)
+
         bottom_layout = QHBoxLayout()
-        bottom_layout.setContentsMargins(15, 5, 15, 10)
-        self.auto_accept_cb = QCheckBox("自动接受匹配队伍")
-        self.auto_accept_cb.setStyleSheet(f"color: {COLOR_TEXT_SUB}; font-size:14px;")
+        bottom_layout.setContentsMargins(20, 10, 20, 14)
+        self.auto_accept_cb = QCheckBox("自动接受匹配")
+        self.auto_accept_cb.setStyleSheet(f"color: rgba(255,255,255,0.45); font-size:13px;")
         self.auto_accept_cb.setChecked(True)
         bottom_layout.addWidget(self.auto_accept_cb); bottom_layout.addStretch()
-        self.status_label = QLabel("状态：等待游戏启动...")
-        self.status_label.setStyleSheet(f"color: {COLOR_TEXT_SUB}; font-weight: bold; font-size: 13px;")
+        
+        # 状态指示灯 + 状态文字
+        self.status_dot = QLabel()
+        self.status_dot.setFixedSize(8, 8)
+        self.status_dot.setStyleSheet(f"""
+            background: {COLOR_DANGER}; 
+            border-radius: 4px;
+        """)
+        bottom_layout.addWidget(self.status_dot)
+        bottom_layout.addSpacing(6)
+        self.status_label = QLabel("等待游戏启动")
+        self.status_label.setStyleSheet(f"color: rgba(255,255,255,0.35); font-weight: bold; font-size: 12px;")
         bottom_layout.addWidget(self.status_label)
         main_layout.addLayout(bottom_layout)
 
@@ -1149,8 +1253,8 @@ class MainWindow(QMainWindow):
         b.setFont(QFont("Microsoft YaHei", 10))
         b.setStyleSheet(f"""
             QTextBrowser {{ background: transparent; color: {COLOR_TEXT_MAIN}; border: none; }} 
-            a {{ color: {COLOR_ACCENT}; text-decoration: none; font-weight: bold; transition: color 0.2s; }} 
-            a:hover {{ color: #b4befe; text-decoration: none; }}
+            a {{ color: {COLOR_ACCENT}; text-decoration: none; font-weight: bold; }} 
+            a:hover {{ color: #a8b4ff; text-decoration: none; }}
         """)
         if clickable: b.anchorClicked.connect(self.handle_link_clicked)
         return b
@@ -1317,11 +1421,13 @@ class MainWindow(QMainWindow):
         with is_monitoring_lock:
             monitoring = is_monitoring
         if monitoring:
-            self.status_label.setText("🟢 状态：已连接客户端，后台运行中...")
-            self.status_label.setStyleSheet(f"color: {COLOR_SUCCESS}; font-weight: bold; font-size:13px;")
+            self.status_dot.setStyleSheet(f"background: {COLOR_SUCCESS}; border-radius: 4px;")
+            self.status_label.setText("已连接客户端")
+            self.status_label.setStyleSheet(f"color: {COLOR_SUCCESS}; font-weight: bold; font-size:12px;")
         else:
-            self.status_label.setText("🔴 状态：未连接客户端，请启动游戏...")
-            self.status_label.setStyleSheet(f"color: {COLOR_DANGER}; font-weight: bold; font-size:13px;")
+            self.status_dot.setStyleSheet(f"background: {COLOR_DANGER}; border-radius: 4px;")
+            self.status_label.setText("等待游戏启动")
+            self.status_label.setStyleSheet(f"color: rgba(255,255,255,0.35); font-weight: bold; font-size:12px;")
 
     def closeEvent(self, event):
         global is_monitoring
