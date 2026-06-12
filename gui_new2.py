@@ -3,13 +3,12 @@ import asyncio
 import threading
 import queue
 import os
-from PySide6.QtCore import Qt, QTimer, QPoint, QThread, Signal, QUrl
+from PySide6.QtCore import Qt, QTimer, QPoint, Signal
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
-    QHBoxLayout, QLabel, QPushButton, QTextEdit, QFrame,
+    QHBoxLayout, QLabel, QPushButton, QFrame,
     QLineEdit, QCheckBox, QTabWidget, QTextBrowser,
-    QDialog, QFormLayout, QDialogButtonBox, QComboBox, QCompleter,
-    QMessageBox, QInputDialog
+    QComboBox, QCompleter, QMessageBox, QInputDialog
 )
 from PySide6.QtGui import QFont, QMouseEvent, QImage
 
@@ -50,7 +49,6 @@ champion_map = load_champion_map()
 spell_map = load_spell_map()
 connector = Connector()
 is_monitoring = False
-global_sum_name = "未知"          
 global_sum_id = 0                 
 last_my_champion_id = 0 
 
@@ -254,7 +252,7 @@ QUEUE_NAMES = {440:"灵活排位", 420:"单排/双排", 450:"极地大乱斗", 4
 def format_k(num):
     return f"{num/1000:.1f}k" if num >= 1000 else str(num)
 
-def _render_one_match(idx, match, show_name=False, player_name="", tagline="", detail_html=""):
+def _render_one_match(idx, match, detail_html=""):
     stats = match['participants'][0]['stats']
     champion_id = match['participants'][0].get('championId')
     champ_icon = image_helper.get_champion_icon_path(champion_id) if image_helper else None
@@ -567,7 +565,9 @@ async def fetch_player_rating(connection, puuid):
         elif score >= 24: tag, tag_color = "下等马", "#a6adc8"
         else: tag, tag_color = "牛马", "#f7768e"
         return {"tag": tag, "color": tag_color, "win_rate": win_rate, "kda": avg_kda, "score": score, "tier": tier}
-    except Exception: return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier}
+    except Exception as e:
+        print(f"[rating] 评分计算失败: {e}")
+        return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier}
 
 def render_team_table(team, team_label, ratings, border_color, bg_tint):
     rows = ""
@@ -631,7 +631,7 @@ def get_lineup_fingerprint(my_team):
     return tuple((m.get('cellId'), m.get('championId'), m.get('spell1Id'), m.get('spell2Id')) for m in my_team)
 
 async def monitor_one_game(connection):
-    global is_monitoring, global_sum_name, last_my_champion_id
+    global is_monitoring, last_my_champion_id
     
     error_count = 0
     while is_monitoring:
@@ -693,7 +693,8 @@ async def monitor_one_game(connection):
             if flow_resp.status != 200:
                 await asyncio.sleep(1); continue
 
-            phase = (await flow_resp.json()).get('phase')
+            flow_data = await flow_resp.json()
+            phase = flow_data.get('phase')
 
             if phase == 'ChampSelect':
                 cs_resp = await connection.request('get', '/lol-champ-select/v1/session')
@@ -760,7 +761,7 @@ async def monitor_one_game(connection):
                 action_completed_ids.clear()
                 warned_bad_names.clear()
                 print_monitor(f"<div style='color:{COLOR_TEXT_SUB}; padding:10px; font-size:14px;'>游戏已开始，加载最新数据...</div>")
-                game_data = (await flow_resp.json()).get('gameData', {})
+                game_data = flow_data.get('gameData', {})
                 my_puuids = {m.get('puuid') for m in my_team if m.get('puuid')}
                 
                 all_players = game_data.get('teamOne', []) + game_data.get('teamTwo', [])
