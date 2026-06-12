@@ -15,7 +15,7 @@ def get_data_dir():
     return os.path.join(base_path, "data")
 
 # 缓存文件路径：exe 同目录下的 data 文件夹
-DATA_DIR = os.path.join(get_data_dir(), "data")
+DATA_DIR = get_data_dir()
 CHAMPION_CACHE_FILE = os.path.join(DATA_DIR, "champion_cache.json")
 SPELL_CACHE_FILE = os.path.join(DATA_DIR, "spell_cache.json")
 

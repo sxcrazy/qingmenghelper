@@ -72,7 +72,8 @@ def load_json(filepath):
     if os.path.exists(filepath):
         try:
             with open(filepath, 'r', encoding='utf-8') as f: return json.load(f)
-        except: pass
+        except Exception:
+            pass
     return []
 
 def save_json(filepath, data):

@@ -148,7 +148,8 @@ async def get_player_tier(connection, puuid):
                         break
             rank_cache[puuid] = highest_tier
             return highest_tier
-    except: pass
+    except Exception as e:
+        print(f"[rank] 获取段位失败: {e}")
     rank_cache[puuid] = "NONE"
     return "NONE"
 
@@ -221,7 +222,8 @@ async def get_player_rank(connection, puuid, player_name):
                      f'<span style="color:{COLOR_ACCENT}; background:rgba(122,162,247,0.1); padding:6px 10px; border-radius:4px; margin-right:12px;">{solo_rank_str}</span>'
                      f'<span style="color:{COLOR_SUCCESS}; background:rgba(158,206,106,0.1); padding:6px 10px; border-radius:4px;">{flex_rank_str}</span>'
                      f'</div></div>')
-    except: pass
+    except Exception as e:
+        print(f"[rank] 段位数据异常: {e}")
 
 async def search_player_by_name(connection, game_name, tag_line):
     try:
@@ -517,7 +519,8 @@ async def get_match_history_detailed(connection, puuid, game_name, tagLine=""):
         main_window._last_search_tag = tagLine
         main_window.expanded_game_ids.clear()
         _rerender_search()
-    except Exception: pass
+    except Exception as e:
+        print(f"[match] 战绩加载失败: {e}")
 
 async def fetch_my_recent_matches(connection, puuid, player_name, tagline):
     try:
@@ -534,7 +537,8 @@ async def fetch_my_recent_matches(connection, puuid, player_name, tagline):
         main_window._home_match_cache = html_parts
         for h in html_parts:
             print_home(h)
-    except Exception: pass
+    except Exception as e:
+        print(f"[home] 主页战绩加载失败: {e}")
 
 async def fetch_player_rating(connection, puuid):
     if not puuid: return None
@@ -971,9 +975,6 @@ QPushButton:hover {{
 }}
 QPushButton:pressed {{
     background-color: #6a9ae8;
-}}
-QPushButton:hover {{
-    background-color: #b4befe;
 }}
 QPushButton:disabled {{
     background-color: rgba(255,255,255,0.1);
