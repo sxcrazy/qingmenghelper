@@ -214,12 +214,15 @@ async def get_player_rank(connection, puuid, player_name):
             if q.get('queueType') == 'RANKED_SOLO_5x5': solo_rank_str = f"单排/双排: {rank_display}"
             elif q.get('queueType') == 'RANKED_FLEX_SR': flex_rank_str = f"灵活排位: {rank_display}"
         
-        print_search(f'<div style="font-size:14px; color:{COLOR_TEXT_MAIN}; font-weight:bold; margin-bottom:12px; background:{COLOR_BG_CARD}; padding:12px 16px; border-radius:6px; border-left:4px solid {COLOR_WARN};">'
+        rank_html = (f'<div style="font-size:14px; color:{COLOR_TEXT_MAIN}; font-weight:bold; margin-bottom:12px; background:{COLOR_BG_CARD}; padding:12px 16px; border-radius:6px; border-left:4px solid {COLOR_WARN};">'
                      f'👑 <span style="font-size:16px;">{player_name}</span> 的排位数据<br>'
                      f'<div style="margin-top:10px; font-size:13px;">'
                      f'<span style="color:{COLOR_ACCENT}; background:rgba(122,162,247,0.1); padding:6px 10px; border-radius:4px; margin-right:12px;">{solo_rank_str}</span>'
                      f'<span style="color:{COLOR_SUCCESS}; background:rgba(158,206,106,0.1); padding:6px 10px; border-radius:4px;">{flex_rank_str}</span>'
                      f'</div></div>')
+        if main_window:
+            main_window._search_rank_html = rank_html
+        print_search(rank_html)
     except Exception as e:
         print(f"[rank] 段位数据异常: {e}")
 
@@ -444,7 +447,15 @@ def _build_detail_html(match_data, highlight_name=""):
                     ir += f'<img src="{TRANSPARENT_IMG}" width="26" height="26" style="vertical-align:middle; margin-right:{margin}; border-radius:4px; background:rgba(0,0,0,0.25);">'
                     
             pn = player.get('gameName', player.get('summonerName', '?'))
+            tag = player.get('tagLine', '')
+            puuid = player.get('puuid', '')
+            full_name = f"{pn}#{tag}" if tag else pn
             name_color = COLOR_WARN if highlight_name and highlight_name.lower() in pn.lower() else COLOR_TEXT_MAIN
+            name_html = (f'<a href="action:copy_name/{pn}/{tag}" style="color:{name_color}; text-decoration:none; font-weight:bold; font-size:14px;" title="点击复制: {full_name}">{pn}'
+                        + (f'<span style="color:{COLOR_TEXT_SUB}; font-size:11px;">#{tag}</span>' if tag else '')
+                        + f' 📋</a>')
+            if puuid:
+                name_html += f' <a href="action:player/{puuid}/{pn}/{tag}" style="color:{COLOR_ACCENT}; text-decoration:none; font-size:12px;" title="搜索战绩">🔍</a>'
             k_, d_, a_ = stats.get('kills',0), stats.get('deaths',0), stats.get('assists',0)
             cs = stats.get('neutralMinionsKilled',0) + stats.get('totalMinionsKilled',0)
             gold_str = format_k(stats.get('goldEarned', 0))
@@ -454,7 +465,7 @@ def _build_detail_html(match_data, highlight_name=""):
             # 加了行下边线、段位/符文分列：
             rows += (f'<tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">'
                     f'<td style="padding:6px 4px; text-align:center; width:45px;">{cimg}</td>'
-                    f'<td style="padding:6px 4px; color:{name_color}; font-size:14px; font-weight:bold; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{pn}">{pn}</td>'
+                    f'<td style="padding:6px 4px; max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{full_name}">{name_html}</td>'
                     f'<td style="padding:6px 4px; text-align:center; width:55px;">{tier_img}</td>'
                     f'<td style="padding:6px 4px; text-align:center; width:45px;">{rune_html}</td>'
                     f'<td style="padding:6px 4px; text-align:center; width:45px;">{spells_html}</td>'
@@ -491,6 +502,9 @@ def _rerender_search():
         return
     cache = main_window.match_cache
     print_search("CLEAR")
+    rank_html = getattr(main_window, '_search_rank_html', '')
+    if rank_html:
+        print_search(rank_html)
     pname = getattr(main_window, '_last_search_name', '')
     ptag = getattr(main_window, '_last_search_tag', '')
     print_search(f'<div style="padding:12px 0 16px 0; color:{COLOR_TEXT_MAIN}; font-weight:bold;">'
@@ -515,6 +529,7 @@ async def get_match_history_detailed(connection, puuid, game_name, tagLine=""):
         main_window.match_cache = [(m, "") for m in matches]
         main_window._last_search_name = game_name
         main_window._last_search_tag = tagLine
+        main_window._search_rank_html = ""
         main_window.expanded_game_ids.clear()
         _rerender_search()
     except Exception as e:
