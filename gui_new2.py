@@ -636,36 +636,110 @@ async def fetch_my_recent_matches(connection, puuid, player_name, tagline):
     except Exception as e:
         print(f"[home] 主页战绩加载失败: {e}")
 
+def _score_kda(k, d, a):
+    if d == 0: return 100.0
+    ratio = (k + a) / d
+    if ratio >= 6: return 100
+    if ratio >= 4: return 80 + (ratio - 4) * 10
+    if ratio >= 3: return 60 + (ratio - 3) * 20
+    if ratio >= 2: return 40 + (ratio - 2) * 20
+    if ratio >= 1: return 20 + (ratio - 1) * 20
+    return max(0, ratio * 20)
+
+def _score_dmg(dmg, gold):
+    if gold <= 0: return 50
+    ratio = dmg / gold
+    if ratio >= 1.5: return 100
+    if ratio >= 1.0: return 70 + (ratio - 1.0) * 60
+    if ratio >= 0.6: return 40 + (ratio - 0.6) * 75
+    return max(0, ratio / 0.6 * 40)
+
+def _score_vision(vs, game_minutes):
+    if game_minutes <= 0: return 50
+    per_min = vs / game_minutes if vs else 0
+    if per_min >= 2.0: return 100
+    if per_min >= 1.2: return 70 + (per_min - 1.2) * 37.5
+    if per_min >= 0.6: return 40 + (per_min - 0.6) * 50
+    return max(0, per_min / 0.6 * 40)
+
+def _score_cs(cs, game_minutes):
+    if game_minutes <= 0: return 50
+    per_min = cs / game_minutes
+    if per_min >= 8: return 100
+    if per_min >= 6: return 70 + (per_min - 6) * 15
+    if per_min >= 4: return 40 + (per_min - 4) * 15
+    return max(0, per_min / 4 * 40)
+
+def _score_survival(d, game_minutes):
+    if game_minutes <= 0: return 50
+    per_min = d / game_minutes
+    if per_min <= 0.15: return 100
+    if per_min <= 0.3: return 75 + (0.3 - per_min) * 166.7
+    if per_min <= 0.5: return 45 + (0.5 - per_min) * 150
+    return max(0, 45 - (per_min - 0.5) * 60)
+
 async def fetch_player_rating(connection, puuid):
     if not puuid: return None
     tier = await get_player_tier(connection, puuid)
     try:
         resp = await connection.request('get', f'/lol-match-history/v1/products/lol/{puuid}/matches')
-        if resp.status != 200: return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier}
+        if resp.status != 200: return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier, "details": {}}
         matches = (await resp.json()).get('games', {}).get('games', [])
-        if not matches: return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier}
-        total_wins = total_kills = total_deaths = total_assists = valid_games = 0
-        for match in matches[:20]:
+        if not matches: return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier, "details": {}}
+
+        n = min(len(matches), 20)
+        s_wr = s_kda = s_dmg = s_vis = s_cs = s_surv = 0
+        total_wins = total_kills = total_deaths = total_assists = 0
+
+        for match in matches[:n]:
             stats = match['participants'][0]['stats']
+            duration = match.get('gameDuration', 1800)
+            mins = max(duration / 60, 1)
+
+            k = stats.get('kills', 0)
+            d = stats.get('deaths', 0)
+            a = stats.get('assists', 0)
+            gold = stats.get('goldEarned', 0)
+            dmg = stats.get('totalDamageDealtToChampions', 0)
+            vs = stats.get('visionScore', 0)
+            cs = stats.get('totalMinionsKilled', 0) + stats.get('neutralMinionsKilled', 0)
+
             if stats.get('win'): total_wins += 1
-            total_kills += stats.get('kills', 0)
-            total_deaths += stats.get('deaths', 0)
-            total_assists += stats.get('assists', 0)
-            valid_games += 1
-        if valid_games == 0: return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier}
-        win_rate = total_wins / valid_games * 100
+            total_kills += k
+            total_deaths += d
+            total_assists += a
+
+            s_wr += 100 if stats.get('win') else 0
+            s_kda += _score_kda(k, d, a)
+            s_dmg += _score_dmg(dmg, gold)
+            s_vis += _score_vision(vs, mins)
+            s_cs += _score_cs(cs, mins)
+            s_surv += _score_survival(d, mins)
+
+        win_rate = total_wins / n * 100
         avg_kda = float(total_kills + total_assists) if total_deaths == 0 else (total_kills + total_assists) / total_deaths
-        score = (win_rate * 0.3) + (avg_kda * 10 * 0.7)
-        if score >= 50: tag, tag_color = "通天代", "#ff9e64"
-        elif score >= 45: tag, tag_color = "小代", "#e0af68"
-        elif score >= 35: tag, tag_color = "上等马", "#9ece6a"
-        elif score >= 28: tag, tag_color = "中等马", "#7aa2f7"
-        elif score >= 24: tag, tag_color = "下等马", "#a6adc8"
+
+        avg_wr = s_wr / n
+        avg_kda_s = s_kda / n
+        avg_dmg = s_dmg / n
+        avg_vis = s_vis / n
+        avg_cs = s_cs / n
+        avg_surv = s_surv / n
+
+        score = avg_wr * 0.25 + avg_kda_s * 0.20 + avg_dmg * 0.15 + avg_vis * 0.10 + avg_cs * 0.10 + avg_surv * 0.20
+
+        if score >= 75: tag, tag_color = "通天代", "#ff9e64"
+        elif score >= 65: tag, tag_color = "小代", "#e0af68"
+        elif score >= 55: tag, tag_color = "上等马", "#9ece6a"
+        elif score >= 45: tag, tag_color = "中等马", "#7aa2f7"
+        elif score >= 35: tag, tag_color = "下等马", "#a6adc8"
         else: tag, tag_color = "牛马", "#f7768e"
-        return {"tag": tag, "color": tag_color, "win_rate": win_rate, "kda": avg_kda, "score": score, "tier": tier}
+
+        details = {"kda_s": avg_kda_s, "dmg": avg_dmg, "vis": avg_vis, "cs": avg_cs, "surv": avg_surv}
+        return {"tag": tag, "color": tag_color, "win_rate": win_rate, "kda": avg_kda, "score": score, "tier": tier, "details": details}
     except Exception as e:
         print(f"[rating] 评分计算失败: {e}")
-        return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier}
+        return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier, "details": {}}
 
 def render_team_table(team, team_label, ratings, border_color, bg_tint):
     rows = ""
