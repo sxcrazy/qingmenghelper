@@ -204,22 +204,106 @@ async def get_player_rank(connection, puuid, player_name):
         resp = await connection.request('get', endpoint)
         if resp.status != 200: return
         data = await resp.json()
-        solo_rank_str = "单双排: 未定级"
-        flex_rank_str = "灵活排位: 未定级"
-        for q in data.get('queues', []):
-            tier = q.get('tier', 'NONE')
-            win_rate = (q.get('wins', 0) / (q.get('wins', 0) + q.get('losses', 0)) * 100) if (q.get('wins', 0) + q.get('losses', 0)) > 0 else 0
-            cn_tier = TIER_TRANSLATE.get(tier, tier)
-            rank_display = f"{cn_tier} {q.get('leaguePoints', 0)}胜点 (胜率:{win_rate:.1f}%)" if tier in ["MASTER", "GRANDMASTER", "CHALLENGER"] else "未定级" if tier == "NONE" else f"{cn_tier}{q.get('division', 'NA')} {q.get('leaguePoints', 0)}胜点 (胜率:{win_rate:.1f}%)"
-            if q.get('queueType') == 'RANKED_SOLO_5x5': solo_rank_str = f"单排/双排: {rank_display}"
-            elif q.get('queueType') == 'RANKED_FLEX_SR': flex_rank_str = f"灵活排位: {rank_display}"
         
-        rank_html = (f'<div style="font-size:14px; color:{COLOR_TEXT_MAIN}; font-weight:bold; margin-bottom:12px; background:{COLOR_BG_CARD}; padding:12px 16px; border-radius:6px; border-left:4px solid {COLOR_WARN};">'
-                     f'👑 <span style="font-size:16px;">{player_name}</span> 的排位数据<br>'
-                     f'<div style="margin-top:10px; font-size:13px;">'
-                     f'<span style="color:{COLOR_ACCENT}; background:rgba(122,162,247,0.1); padding:6px 10px; border-radius:4px; margin-right:12px;">{solo_rank_str}</span>'
-                     f'<span style="color:{COLOR_SUCCESS}; background:rgba(158,206,106,0.1); padding:6px 10px; border-radius:4px;">{flex_rank_str}</span>'
-                     f'</div></div>')
+        queue_data = {}
+        for q in data.get('queues', []):
+            qt = q.get('queueType', '')
+            tier = q.get('tier', 'NONE')
+            division = q.get('division', '')
+            lp = q.get('leaguePoints', 0)
+            wins = q.get('wins', 0)
+            losses = q.get('losses', 0)
+            total = wins + losses
+            win_rate = (wins / total * 100) if total > 0 else 0
+            cn_tier = TIER_TRANSLATE.get(tier, tier)
+            tier_url = get_tier_icon_url(tier)
+            if tier in ["MASTER", "GRANDMASTER", "CHALLENGER"]:
+                tier_str = f"{cn_tier}"
+            elif tier == "NONE":
+                tier_str = "未定级"
+            else:
+                tier_str = f"{cn_tier} {division}"
+            queue_data[qt] = {
+                "tier_str": tier_str, "lp": lp, "wins": wins,
+                "losses": losses, "win_rate": win_rate, "tier_url": tier_url, "tier": tier,
+            }
+        
+        solo = queue_data.get('RANKED_SOLO_5x5', {"tier_str": "未定级", "lp": 0, "wins": 0, "losses": 0, "win_rate": 0, "tier_url": "", "tier": "NONE"})
+        flex = queue_data.get('RANKED_FLEX_SR', {"tier_str": "未定级", "lp": 0, "wins": 0, "losses": 0, "win_rate": 0, "tier_url": "", "tier": "NONE"})
+        
+        # 优化点：剔除进度条，采用 OP.GG 式的干净排版，放大图标，文字两端对齐
+        def _rank_card(q, label, accent):
+            tier_img = f'<img src="file:///{q["tier_url"]}" width="68" height="56" style="border-radius:28px;">' if q["tier_url"] else f'<div style="width:56px; height:56px; border-radius:28px; background:rgba(255,255,255,0.06); text-align:center; line-height:56px; font-size:24px; color:rgba(255,255,255,0.3);">?</div>'
+            bar_color = accent
+            if q["win_rate"] >= 55: bar_color = COLOR_SUCCESS
+            elif q["win_rate"] < 45 and q["wins"] + q["losses"] > 0: bar_color = COLOR_DANGER
+            
+            return (f'<td width="49%" style="padding:16px 20px; vertical-align:top;">'
+                    f'<div style="color:rgba(255,255,255,0.5); font-size:13px; font-weight:bold; margin-bottom:14px;">{label}</div>'
+                    f'<table width="100%" cellpadding="0" cellspacing="0" style="border:none;"><tr>'
+                    f'<td width="72" style="vertical-align:middle;">{tier_img}</td>'
+                    f'<td style="vertical-align:middle;">'
+                    f'<div style="font-size:18px; font-weight:bold; color:{COLOR_TEXT_MAIN}; letter-spacing: 0.5px;">{q["tier_str"]}</div>'
+                    f'<div style="font-size:14px; color:{accent}; font-weight:bold; margin-top:4px;">{q["lp"]} LP</div>'
+                    f'</td>'
+                    f'<td align="right" style="vertical-align:middle;">'
+                    f'<div style="font-size:13px; color:rgba(255,255,255,0.4);">'
+                    f'<span style="color:{COLOR_TEXT_MAIN};">{q["wins"]}胜</span> {q["losses"]}负'
+                    f'</div>'
+                    f'<div style="font-size:13px; color:{bar_color}; font-weight:bold; margin-top:4px;">胜率 {q["win_rate"]:.1f}%</div>'
+                    f'</td></tr></table></td>')
+        
+        # 优化点：给左右 td 限制死 49% 宽度，给分割线限制死 2px，彻底解决拉伸变灰块的 Bug
+        rank_html = (f'<div style="padding:12px 16px; border-bottom:1px solid rgba(255,255,255,0.04);">'
+                     f'<table cellpadding="0" cellspacing="0" style="border:none;"><tr>'
+                     f'<td><span style="font-size:19px; font-weight:bold; color:{COLOR_TEXT_MAIN};">👑 {player_name.strip()}</span></td>'
+                     f'<td style="padding-left:10px;"><span style="font-size:19px; color:rgba(255,255,255,0.3);">排位数据</span></td>'
+                     f'</tr></table></div>'
+                     f'<table width="100%" cellpadding="0" cellspacing="0" style="border:none;"><tr>'
+                     f'{_rank_card(solo, "单排 / 双排", COLOR_ACCENT)}'
+                     f'<td width="2" style="background:rgba(255,255,255,0.05);"></td>'
+                     f'{_rank_card(flex, "灵活排位", COLOR_SUCCESS)}'
+                     f'</tr></table></div>')
+        
+        if main_window:
+            main_window._search_rank_html = rank_html
+        print_search(rank_html)
+    except Exception as e:
+        print(f"[rank] 段位数据异常: {e}")
+
+        def _rank_card(q, label, accent):
+            # 图标稍微加大一点，撑起左侧视觉重心
+            tier_img = f'<img src="file:///{q["tier_url"]}" width="64" height="64" style="border-radius:32px;">' if q["tier_url"] else f'<div style="width:64px; height:64px; border-radius:32px; background:rgba(255,255,255,0.06); text-align:center; line-height:64px; font-size:24px; color:rgba(255,255,255,0.3);">?</div>'
+            
+            # 胜率颜色阈值逻辑
+            bar_color = accent
+            if q["win_rate"] >= 55: bar_color = COLOR_SUCCESS
+            elif q["win_rate"] < 45 and q["wins"] + q["losses"] > 0: bar_color = COLOR_DANGER
+            
+            return (f'<td width="49%" style="padding:14px 18px; vertical-align:top;">'
+                    # 顶部标签 (如: 单排/双排) 保持弱化
+                    f'<div style="color:rgba(255,255,255,0.4); font-size:12px; margin-bottom:12px;">{label}</div>'
+                    
+                    f'<table width="100%" cellpadding="0" cellspacing="0" style="border:none;"><tr>'
+                    # 左侧图标列
+                    f'<td width="78" style="vertical-align:top; padding-top:2px;">{tier_img}</td>'
+                    
+                    # 右侧文字信息列 (垂直排布)
+                    f'<td style="vertical-align:top;">'
+                    # 1. 段位名称 (最大最醒目)
+                    f'<div style="font-size:15px; font-weight:bold; color:{COLOR_TEXT_MAIN}; font-family:\'Microsoft YaHei\'; letter-spacing:0.5px;">{q["tier_str"]}</div>'
+                    # 2. LP 分数 (次级醒目，使用主题蓝)
+                    f'<div style="font-size:13px; color:{COLOR_TEXT_SUB}; margin-top:2px;">{q["lp"]} LP</div>'
+                    # 3. 胜负场次详情 (字号调小，颜色弱化为灰色，胜负带点颜色)
+                    f'<div style="font-size:12px; color:rgba(255,255,255,0.4); margin-top:8px;">'
+                    f'<span style="color:{COLOR_SUCCESS};">{q["wins"]}胜</span> '
+                    f'<span style="color:{COLOR_DANGER};">{q["losses"]}负</span> '
+                    f'({q["wins"] + q["losses"]}场)'
+                    f'</div>'
+                    # 4. 胜率 (紧跟其后，动态颜色)
+                    f'<div style="font-size:12px; color:{bar_color}; font-weight:bold; margin-top:2px;">胜率 {q["win_rate"]:.1f}%</div>'
+                    f'</td></tr></table></td>')
+        
         if main_window:
             main_window._search_rank_html = rank_html
         print_search(rank_html)
@@ -529,7 +613,6 @@ async def get_match_history_detailed(connection, puuid, game_name, tagLine=""):
         main_window.match_cache = [(m, "") for m in matches]
         main_window._last_search_name = game_name
         main_window._last_search_tag = tagLine
-        main_window._search_rank_html = ""
         main_window.expanded_game_ids.clear()
         _rerender_search()
     except Exception as e:
@@ -864,30 +947,55 @@ async def connect(connection):
 
 def run_monitor(): connector.start()
 
+
 # ================= PySide6 UI =================
 class TitleBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
-        self.setFixedHeight(45)
+        self.setFixedHeight(62)
         self.drag_pos = QPoint()
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(15, 0, 10, 0)
         
-        self.title_label = QLabel(" 清梦 - 英雄联盟助手")
-        self.title_label.setStyleSheet(f"color: {COLOR_TEXT_MAIN}; font-size: 30px; font-weight: bold; font-family: 'Microsoft YaHei', 'Segoe UI';")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(20, 0, 15, 0)
+        layout.setSpacing(15)
+        
+        # 标题与图标区域
+        self.title_label = QLabel("🌙 清梦助手")
+        self.title_label.setStyleSheet(f"color: {COLOR_TEXT_MAIN}; font-size: 18px; font-weight: bold; font-family: 'Microsoft YaHei';")
         layout.addWidget(self.title_label)
+        
         layout.addStretch()
         
+        # 搜索栏整合进标题栏
+        search_layout = QHBoxLayout()
+        search_layout.setSpacing(8)
+        
+        self.search_input = QLineEdit()
+        self.search_input.setObjectName("searchInput")
+        self.search_input.setPlaceholderText("🔍 输入 名字#编号 查战绩...")
+        self.search_input.setFixedSize(280, 36)
+        search_layout.addWidget(self.search_input)
+
+        self.search_btn = QPushButton("搜索")
+        self.search_btn.setObjectName("searchBtn")
+        self.search_btn.setFixedSize(80, 36)
+        self.search_btn.setEnabled(False)
+        search_layout.addWidget(self.search_btn)
+        
+        layout.addLayout(search_layout)
+        layout.addSpacing(20)
+        
+        # 窗口控制按钮
         self.min_btn = QPushButton("—")
-        self.min_btn.setFixedSize(36, 30)
-        self.min_btn.setStyleSheet(f"QPushButton {{ background: transparent; color: {COLOR_TEXT_SUB}; border: none; font-size: 14px; border-radius: 4px; }} QPushButton:hover {{ background: rgba(255,255,255,0.1); color: {COLOR_TEXT_MAIN}; }}")
+        self.min_btn.setFixedSize(32, 32)
+        self.min_btn.setObjectName("winCtrlBtn")
         self.min_btn.clicked.connect(self.parent.showMinimized)
         layout.addWidget(self.min_btn)
         
         self.close_btn = QPushButton("✕")
-        self.close_btn.setFixedSize(36, 30)
-        self.close_btn.setStyleSheet(f"QPushButton {{ background: transparent; color: {COLOR_TEXT_SUB}; border: none; font-size: 14px; border-radius: 4px; }} QPushButton:hover {{ background: {COLOR_DANGER}; color: {COLOR_BG_MAIN}; }}")
+        self.close_btn.setFixedSize(32, 32)
+        self.close_btn.setObjectName("winCloseBtn")
         self.close_btn.clicked.connect(self.parent.close)
         layout.addWidget(self.close_btn)
 
@@ -895,32 +1003,104 @@ class TitleBar(QWidget):
         if event.button() == Qt.LeftButton:
             self.drag_pos = event.globalPosition().toPoint() - self.parent.frameGeometry().topLeft()
             event.accept()
+            
     def mouseMoveEvent(self, event: QMouseEvent):
         if event.buttons() == Qt.LeftButton:
             self.parent.move(event.globalPosition().toPoint() - self.drag_pos)
             event.accept()
 
-# 全局极简紧凑 QSS
+# 全局现代电竞风 QSS
 MODERN_QSS = f"""
 QMainWindow {{
     background: transparent;
 }}
 #central {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 {COLOR_BG_MAIN},
-        stop:1 #151720);
-    border-radius: 10px;
+    background: {COLOR_BG_MAIN};
+    border-radius: 12px;
     border: 1px solid rgba(255,255,255,0.08);
+}}
+QPushButton#winCtrlBtn {{
+    background: transparent;
+    color: {COLOR_TEXT_SUB};
+    border: none;
+    font-size: 14px;
+    font-weight: bold;
+    border-radius: 6px;
+}}
+QPushButton#winCtrlBtn:hover {{
+    background: rgba(255,255,255,0.1);
+    color: {COLOR_TEXT_MAIN};
+}}
+QPushButton#winCloseBtn {{
+    background: transparent;
+    color: {COLOR_TEXT_SUB};
+    border: none;
+    font-size: 14px;
+    font-weight: bold;
+    border-radius: 6px;
+}}
+QPushButton#winCloseBtn:hover {{
+    background: {COLOR_DANGER};
+    color: {COLOR_BG_MAIN};
+}}
+QLineEdit#searchInput {{
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 18px;
+    padding: 0 16px;
+    color: {COLOR_TEXT_MAIN};
+    font-size: 14px;
+}}
+QLineEdit#searchInput:focus {{
+    border: 1px solid {COLOR_ACCENT};
+    background: rgba(0, 0, 0, 0.4);
+}}
+QPushButton#searchBtn {{
+    background: transparent;
+    color: {COLOR_ACCENT};
+    border: 1px solid {COLOR_ACCENT};
+    border-radius: 18px;
+    font-weight: bold;
+    font-size: 14px;
+}}
+QPushButton#searchBtn:hover {{
+    background: rgba(122, 162, 247, 0.15);
+}}
+QPushButton#searchBtn:pressed {{
+    background: rgba(122, 162, 247, 0.3);
+}}
+QPushButton#searchBtn:disabled {{
+    color: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.1);
+}}
+QTabWidget::pane {{
+    border: none;
+    background: transparent;
+}}
+QTabBar::tab {{
+    background: rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.4);
+    padding: 10px 26px;
+    margin: 4px 6px 16px 15px;
+    border-radius: 16px;
+    font-size: 16px;
+    font-weight: bold;
+}}
+QTabBar::tab:selected {{
+    background: {COLOR_ACCENT};
+    color: {COLOR_BG_MAIN};
+}}
+QTabBar::tab:hover:!selected {{
+    background: rgba(255, 255, 255, 0.08);
+    color: {COLOR_TEXT_MAIN};
 }}
 QTextBrowser {{
     background: transparent;
     color: {COLOR_TEXT_MAIN};
     border: none;
-    padding: 0px;
+    padding: 0px 8px;
 }}
-QScrollBar:horizontal {{
-    height: 0px; 
-}}
+QScrollBar:horizontal {{ height: 0px; }}
 QScrollBar:vertical {{
     border: none;
     background: transparent;
@@ -928,109 +1108,62 @@ QScrollBar:vertical {{
     margin: 0px;
 }}
 QScrollBar::handle:vertical {{
-    background: rgba(255, 255, 255, 0.12);
-    min-height: 30px;
+    background: rgba(255, 255, 255, 0.15);
+    min-height: 40px;
     border-radius: 3px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background: rgba(255, 255, 255, 0.30);
+    background: rgba(255, 255, 255, 0.3);
 }}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-    height: 0px;
-    border: none;
-    background: transparent;
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; border: none; background: transparent; }}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}
+QFrame#autoPanel {{
+    background: {COLOR_BG_CARD};
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
 }}
-QTabWidget::pane {{
-    background: transparent;
-    border-radius: 8px;
-    margin: 0px 12px 12px 12px;
-}}
-QTabBar::tab {{
-    background: transparent;
-    color: {COLOR_TEXT_SUB};
-    padding: 14px 24px;
-    font-size: 15px;
-    font-weight: bold;
-    border-bottom: 3px solid transparent;
-    margin-right: 6px;
-}}
-QTabBar::tab:selected {{
-    color: {COLOR_ACCENT};
-    border-bottom: 3px solid {COLOR_ACCENT};
-    background: rgba(122,162,247,0.06);
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
-}}
-QTabBar::tab:hover:!selected {{
-    color: {COLOR_TEXT_MAIN};
-    background: rgba(255, 255, 255, 0.03);
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
-}}
-QLineEdit {{
-    background-color: {COLOR_BG_CARD};
-    color: {COLOR_TEXT_MAIN};
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 6px;
-    padding: 0 14px;
-    font-size: 14px;
-}}
-QLineEdit:focus {{
-    border: 1px solid {COLOR_ACCENT};
-}}
-QPushButton {{
-    background-color: {COLOR_ACCENT};
-    color: {COLOR_BG_MAIN};
-    border: none;
-    border-radius: 6px;
-    font-weight: bold;
-    font-size: 14px;
-}}
-QPushButton:hover {{
-    background-color: #8bb4ff;
-}}
-QPushButton:pressed {{
-    background-color: #6a9ae8;
-}}
-QPushButton:disabled {{
-    background-color: rgba(255,255,255,0.1);
-    color: rgba(255,255,255,0.3);
+QFrame#bottomBar {{
+    background: rgba(0, 0, 0, 0.15);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
 }}
 QCheckBox {{
     color: {COLOR_TEXT_MAIN};
-    font-size: 14px;
+    font-size: 13px;
     font-weight: bold;
+    spacing: 8px;
 }}
 QCheckBox::indicator {{
-    width: 18px;
-    height: 18px;
+    width: 18px; height: 18px;
     border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.2);
-    background: {COLOR_BG_CARD};
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.2);
 }}
+QCheckBox::indicator:hover {{ border: 1px solid rgba(255, 255, 255, 0.4); }}
 QCheckBox::indicator:checked {{
     background: {COLOR_ACCENT};
     border: 1px solid {COLOR_ACCENT};
 }}
 QComboBox {{
-    background: {COLOR_BG_CARD};
+    background: rgba(0, 0, 0, 0.2);
     color: {COLOR_TEXT_MAIN};
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 4px;
-    padding-left: 10px;
-    font-size: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 2px 10px;
+    font-size: 13px;
     font-weight: bold;
 }}
-QComboBox:hover {{
-    border: 1px solid {COLOR_ACCENT};
-}}
+QComboBox:hover {{ border: 1px solid {COLOR_ACCENT}; }}
+QComboBox::drop-down {{ border: none; width: 24px; }}
 QComboBox QAbstractItemView {{
     background: {COLOR_BG_CARD};
     color: {COLOR_TEXT_MAIN};
-    selection-background-color: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 4px;
-    outline: none;
+    selection-background-color: {COLOR_ACCENT};
+    selection-color: {COLOR_BG_MAIN};
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 4px;
 }}
 """
 
@@ -1051,116 +1184,149 @@ class MainWindow(QMainWindow):
 
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        # 将原 920x680 扩大
-        self.setGeometry(100, 100, 1060, 780) 
-        central_widget = QWidget(); central_widget.setObjectName("central")
+        # 尺寸稍微优化，适应现代宽屏比例体验
+        self.setGeometry(100, 100, 1080, 760) 
+        central_widget = QWidget()
+        central_widget.setObjectName("central")
         self.setCentralWidget(central_widget)
 
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0); main_layout.setSpacing(0)
-        self.title_bar = TitleBar(self); main_layout.addWidget(self.title_bar)
-
-        search_layout = QHBoxLayout()
-        search_layout.setContentsMargins(15, 0, 15, 10); search_layout.setSpacing(10); search_layout.addStretch()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("输入 名字#编号 查战绩...")
-        self.search_input.setFixedSize(260, 34)
-        search_layout.addWidget(self.search_input)
-
-        self.search_btn = QPushButton("搜索")
-        self.search_btn.setFixedSize(90, 34)
+        # 顶部标题栏（整合了搜索框）
+        self.title_bar = TitleBar(self)
+        main_layout.addWidget(self.title_bar)
+        
+        # 引用标题栏内的搜索控件供后续逻辑调用
+        self.search_input = self.title_bar.search_input
+        self.search_btn = self.title_bar.search_btn
         self.search_btn.clicked.connect(self.start_search)
-        self.search_btn.setEnabled(False)
-        search_layout.addWidget(self.search_btn)
-        main_layout.addLayout(search_layout)
 
+        # Tab 主体区域
         self.tab_widget = QTabWidget()
-
+        
+        # ===== 主页 Tab =====
         home_widget = QWidget()
         home_layout = QVBoxLayout(home_widget)
-        home_layout.setContentsMargins(12, 12, 12, 12)
+        home_layout.setContentsMargins(15, 0, 15, 15)
         
         auto_panel = QFrame()
-        auto_panel.setStyleSheet(f"QFrame {{ background: rgba(0,0,0,0.15); border-radius: 6px; border: 1px solid rgba(255,255,255,0.03); }}")
+        auto_panel.setObjectName("autoPanel")
         auto_layout = QHBoxLayout(auto_panel)
-        auto_layout.setContentsMargins(15, 12, 15, 12)
+        auto_layout.setContentsMargins(20, 14, 20, 14)
 
         self.auto_pick_cb = QCheckBox("启用自动秒选")
-        self.auto_pick_cb.setStyleSheet(f"color: {COLOR_WARN}; font-size:14px;")
+        self.auto_pick_cb.setStyleSheet(f"color: {COLOR_WARN};")
         self.auto_pick_combo = QComboBox()
         self.auto_pick_combo.setEditable(True)
-        self.auto_pick_combo.setFixedSize(140, 30)
+        self.auto_pick_combo.setFixedSize(140, 32)
 
         self.auto_ban_cb = QCheckBox("启用自动秒禁")
-        self.auto_ban_cb.setStyleSheet(f"color: {COLOR_DANGER}; font-size:14px;")
+        self.auto_ban_cb.setStyleSheet(f"color: {COLOR_DANGER};")
         self.auto_ban_combo = QComboBox()
         self.auto_ban_combo.setEditable(True)
-        self.auto_ban_combo.setFixedSize(140, 30)
+        self.auto_ban_combo.setFixedSize(140, 32)
 
         champ_names = sorted(list(champion_map.values()))
         self.auto_pick_combo.addItems([""] + champ_names)
         self.auto_ban_combo.addItems([""] + champ_names)
         
-        pick_completer = QCompleter(champ_names); pick_completer.setFilterMode(Qt.MatchContains)
+        pick_completer = QCompleter(champ_names)
+        pick_completer.setFilterMode(Qt.MatchContains)
         self.auto_pick_combo.setCompleter(pick_completer)
-        ban_completer = QCompleter(champ_names); ban_completer.setFilterMode(Qt.MatchContains)
+        
+        ban_completer = QCompleter(champ_names)
+        ban_completer.setFilterMode(Qt.MatchContains)
         self.auto_ban_combo.setCompleter(ban_completer)
         
         auto_layout.addWidget(self.auto_pick_cb)
         auto_layout.addWidget(self.auto_pick_combo)
-        auto_layout.addSpacing(30)
+        auto_layout.addSpacing(40)
         auto_layout.addWidget(self.auto_ban_cb)
         auto_layout.addWidget(self.auto_ban_combo)
         auto_layout.addStretch()
 
         home_layout.addWidget(auto_panel)
+        home_layout.addSpacing(10)
         self.home_text = self.create_browser()
         home_layout.addWidget(self.home_text)
         self.tab_widget.addTab(home_widget, "大厅总览")
 
-        self.monitor_text = self.create_browser(True); self.tab_widget.addTab(self.create_tab(self.monitor_text), "当前对局")
-        self.search_result_text = self.create_browser(True); self.tab_widget.addTab(self.create_tab(self.search_result_text), "战绩查询")
-        self.rune_browser = self.create_browser(True); self.tab_widget.addTab(self.create_tab(self.rune_browser), "符文出装")
+        # ===== 其它 Tabs =====
+        self.monitor_text = self.create_browser(True)
+        self.tab_widget.addTab(self.create_tab(self.monitor_text), "当前对局")
+        
+        self.search_result_text = self.create_browser(True)
+        self.tab_widget.addTab(self.create_tab(self.search_result_text), "战绩查询")
+        
+        self.rune_browser = self.create_browser(True)
+        self.tab_widget.addTab(self.create_tab(self.rune_browser), "符文出装")
 
         main_layout.addWidget(self.tab_widget)
         
-        bottom_layout = QHBoxLayout()
-        bottom_layout.setContentsMargins(15, 5, 15, 10)
+        # ===== 底部状态栏 =====
+        bottom_bar = QFrame()
+        bottom_bar.setObjectName("bottomBar")
+        bottom_bar.setFixedHeight(50)
+        bottom_layout = QHBoxLayout(bottom_bar)
+        bottom_layout.setContentsMargins(20, 0, 20, 0)
+        
         self.auto_accept_cb = QCheckBox("自动接受匹配队伍")
-        self.auto_accept_cb.setStyleSheet(f"color: {COLOR_TEXT_SUB}; font-size:14px;")
+        self.auto_accept_cb.setStyleSheet(f"color: {COLOR_TEXT_SUB}; font-size: 14px;")
         self.auto_accept_cb.setChecked(True)
-        bottom_layout.addWidget(self.auto_accept_cb); bottom_layout.addStretch()
-        self.status_label = QLabel("状态：等待游戏启动...")
-        self.status_label.setStyleSheet(f"color: {COLOR_TEXT_SUB}; font-weight: bold; font-size: 13px;")
+        bottom_layout.addWidget(self.auto_accept_cb)
+        
+        bottom_layout.addStretch()
+        
+        self.status_label = QLabel("● 状态：等待游戏启动...")
+        self.status_label.setStyleSheet(f"color: rgba(255, 255, 255, 0.4); font-weight: bold; font-size: 14px;")
         bottom_layout.addWidget(self.status_label)
-        main_layout.addLayout(bottom_layout)
+        
+        main_layout.addWidget(bottom_bar)
 
         self.setStyleSheet(MODERN_QSS)
         self.connection = None
-        self.timer = QTimer(); self.timer.timeout.connect(self.update_log); self.timer.start(100)
-        self.monitor_thread = threading.Thread(target=run_monitor, daemon=True); self.monitor_thread.start()
-        self.status_timer = QTimer(); self.status_timer.timeout.connect(self.update_status); self.status_timer.start(500)
+        
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_log)
+        self.timer.start(100)
+        
+        self.monitor_thread = threading.Thread(target=run_monitor, daemon=True)
+        self.monitor_thread.start()
+        
+        self.status_timer = QTimer()
+        self.status_timer.timeout.connect(self.update_status)
+        self.status_timer.start(500)
 
     def create_browser(self, clickable=False):
         b = QTextBrowser()
-        b.setReadOnly(True); b.setOpenLinks(False); b.setOpenExternalLinks(False)
+        b.setReadOnly(True)
+        b.setOpenLinks(False)
+        b.setOpenExternalLinks(False)
         b.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         b.setFont(QFont("Microsoft YaHei", 10))
         b.setStyleSheet(f"""
-            QTextBrowser {{ background: transparent; color: {COLOR_TEXT_MAIN}; border: none; }} 
-            a {{ color: {COLOR_ACCENT}; text-decoration: none; font-weight: bold; transition: color 0.2s; }} 
-            a:hover {{ color: #b4befe; text-decoration: none; }}
+            QTextBrowser {{ background: transparent; color: {COLOR_TEXT_MAIN}; border: none; }}
+            a {{ color: {COLOR_ACCENT}; text-decoration: none; font-weight: bold; }}
+            a:hover {{ color: #b4befe; text-decoration: underline; }}
         """)
-        if clickable: b.anchorClicked.connect(self.handle_link_clicked)
+        if clickable: 
+            b.anchorClicked.connect(self.handle_link_clicked)
         return b
 
     def create_tab(self, browser):
-        w = QWidget(); l = QVBoxLayout(w); l.setContentsMargins(5,5,0,5); l.addWidget(browser); return w
+        w = QWidget()
+        l = QVBoxLayout(w)
+        l.setContentsMargins(15, 0, 15, 10)
+        l.addWidget(browser)
+        return w
 
-    def on_loop_ready(self): self.search_btn.setEnabled(True)
+    def on_loop_ready(self): 
+        self.search_btn.setEnabled(True)
 
-    def on_search_finished(self): self.search_btn.setEnabled(True)
+    def on_search_finished(self): 
+        self.search_btn.setEnabled(True)
 
     def start_search(self):
         full_text = self.search_input.text().strip()
@@ -1206,7 +1372,7 @@ class MainWindow(QMainWindow):
                     full = f"{name}#{tag}"
                     QApplication.clipboard().setText(full)
                     self.status_label.setText(f"📋 已复制: {full}")
-                    self.status_label.setStyleSheet(f"color: {COLOR_SUCCESS}; font-weight: bold; font-size:13px;")
+                    self.status_label.setStyleSheet(f"color: {COLOR_SUCCESS}; font-weight: bold; font-size: 13px;")
                     QTimer.singleShot(2500, lambda: self.update_status())
                     
             elif cmd.startswith("toggle_match/"):
@@ -1229,7 +1395,6 @@ class MainWindow(QMainWindow):
         else:
             data = await _fetch_match_detail_data(self.connection, game_id)
             if data:
-                # 在渲染详情前，并发预先获取所有 10 名玩家的段位缓存，避免列表渲染卡顿或缺失
                 identities = data.get('participantIdentities', [])
                 tasks = []
                 for ident in identities:
@@ -1273,7 +1438,8 @@ class MainWindow(QMainWindow):
         await get_player_rank(self.connection, puuid, name)
         await get_match_history_detailed(self.connection, puuid, name, tagline)
 
-    def on_switch_to_monitor(self): self.tab_widget.setCurrentIndex(1)
+    def on_switch_to_monitor(self): 
+        self.tab_widget.setCurrentIndex(1)
 
     def update_log(self):
         while not log_queue.empty():
@@ -1317,11 +1483,11 @@ class MainWindow(QMainWindow):
         with is_monitoring_lock:
             monitoring = is_monitoring
         if monitoring:
-            self.status_label.setText("🟢 状态：已连接客户端，后台运行中...")
-            self.status_label.setStyleSheet(f"color: {COLOR_SUCCESS}; font-weight: bold; font-size:13px;")
+            self.status_label.setText("● 状态：已连接客户端，后台运行中...")
+            self.status_label.setStyleSheet(f"color: {COLOR_SUCCESS}; font-weight: bold; font-size: 13px;")
         else:
-            self.status_label.setText("🔴 状态：未连接客户端，请启动游戏...")
-            self.status_label.setStyleSheet(f"color: {COLOR_DANGER}; font-weight: bold; font-size:13px;")
+            self.status_label.setText("● 状态：未连接客户端，请启动游戏...")
+            self.status_label.setStyleSheet(f"color: {COLOR_DANGER}; font-weight: bold; font-size: 13px;")
 
     def closeEvent(self, event):
         global is_monitoring
