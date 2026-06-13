@@ -636,6 +636,32 @@ async def fetch_my_recent_matches(connection, puuid, player_name, tagline):
     except Exception as e:
         print(f"[home] 主页战绩加载失败: {e}")
 
+def calculate_advanced_rating(stats):
+    """
+    进阶多维评分算法：基于近期 20 场的平均数据
+    不只看 KDA，更看重伤害转化率和视野贡献
+    """
+    # 1. KDA 得分 (5.0 满分)
+    kda = (stats['kills'] + stats['assists']) / max(stats['deaths'], 1)
+    score_kda = min(100, (kda / 5.0) * 100)
+
+    # 2. 伤害转化效率 (DPM / GPM) - 核心指标，看是不是吃草挤奶
+    dmg_efficiency = stats['dpm'] / max(stats['gpm'], 1)
+    score_dmg = min(100, (dmg_efficiency / 1.5) * 100)
+
+    # 3. 视野得分 (分均视野 1.0 满分)
+    score_vis = min(100, (stats['vspm'] / 1.0) * 100)
+
+    # 4. 裸分加权：KDA占40%，伤害转化占40%，视野占20%
+    raw_score = (score_kda * 0.4) + (score_dmg * 0.4) + (score_vis * 0.2)
+
+    # 5. 结合胜率进行最终修正 (局内表现占70%，最终胜率占30%)
+    final_score = (raw_score * 0.7) + (stats['win_rate'] * 0.3)
+
+    return round(max(0, min(100, final_score)), 1)
+
+
+# ================= 修改：原有抓取逻辑 (增加高级数据解析) =================
 async def fetch_player_rating(connection, puuid):
     if not puuid: return None
     tier = await get_player_tier(connection, puuid)
@@ -644,24 +670,60 @@ async def fetch_player_rating(connection, puuid):
         if resp.status != 200: return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier}
         matches = (await resp.json()).get('games', {}).get('games', [])
         if not matches: return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier}
+        
+        # 初始化各项总计
         total_wins = total_kills = total_deaths = total_assists = valid_games = 0
+        total_damage = total_gold = total_vision = total_duration_sec = 0
+        
         for match in matches[:20]:
+            # 获取游戏时长，过滤掉3分钟内的重开局
+            duration_sec = match.get('gameDuration', 1800)
+            if duration_sec < 180: continue 
+
             stats = match['participants'][0]['stats']
+            
             if stats.get('win'): total_wins += 1
             total_kills += stats.get('kills', 0)
             total_deaths += stats.get('deaths', 0)
             total_assists += stats.get('assists', 0)
+            
+            # 抓取高级数据
+            total_damage += stats.get('totalDamageDealtToChampions', 0)
+            total_gold += stats.get('goldEarned', 0)
+            total_vision += stats.get('visionScore', 0)
+            total_duration_sec += duration_sec
+            
             valid_games += 1
+            
         if valid_games == 0: return {"tag": "未知", "color": "#a6adc8", "win_rate": 0, "kda": 0, "score": 0, "tier": tier}
-        win_rate = total_wins / valid_games * 100
-        avg_kda = float(total_kills + total_assists) if total_deaths == 0 else (total_kills + total_assists) / total_deaths
-        score = (win_rate * 0.3) + (avg_kda * 10 * 0.7)
-        if score >= 50: tag, tag_color = "通天代", "#ff9e64"
-        elif score >= 45: tag, tag_color = "小代", "#e0af68"
-        elif score >= 35: tag, tag_color = "上等马", "#9ece6a"
-        elif score >= 28: tag, tag_color = "中等马", "#7aa2f7"
-        elif score >= 24: tag, tag_color = "下等马", "#a6adc8"
+        
+        # 1. 计算基础数据
+        win_rate = (total_wins / valid_games) * 100
+        avg_kda = float(total_kills + total_assists) / max(total_deaths, 1)
+        
+        # 2. 计算分均高级数据 (用于喂给新算法)
+        duration_min = max(total_duration_sec / 60.0, 1) # 防止除零
+        adv_stats = {
+            'kills': total_kills / valid_games,
+            'deaths': total_deaths / valid_games,
+            'assists': total_assists / valid_games,
+            'dpm': total_damage / duration_min,
+            'gpm': total_gold / duration_min,
+            'vspm': total_vision / duration_min,
+            'win_rate': win_rate
+        }
+        
+        # 3. 调用上面定义的新算法算分
+        score = calculate_advanced_rating(adv_stats)
+        
+        # 4. 根据新分数赋予标签 (满分100，标准收紧，含金量更高)
+        if score >= 75: tag, tag_color = "通天代", "#ff9e64"
+        elif score >= 60: tag, tag_color = "小代", "#e0af68"
+        elif score >= 50: tag, tag_color = "上等马", "#9ece6a"
+        elif score >= 40: tag, tag_color = "中等马", "#7aa2f7"
+        elif score >= 30: tag, tag_color = "下等马", "#a6adc8"
         else: tag, tag_color = "牛马", "#f7768e"
+        
         return {"tag": tag, "color": tag_color, "win_rate": win_rate, "kda": avg_kda, "score": score, "tier": tier}
     except Exception as e:
         print(f"[rating] 评分计算失败: {e}")
