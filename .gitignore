@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+
+# 运行时下载的图片资源
+data/images/
+data/perk-images/
+data/profileicon/
+data/rank/
+data/spell/
+
+# 用户数据
+data/saved_runes.json
+data/saved_items_v2.json
