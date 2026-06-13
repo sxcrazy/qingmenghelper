@@ -962,7 +962,7 @@ class TitleBar(QWidget):
         
         # 标题与图标区域
         self.title_label = QLabel("🌙 清梦助手")
-        self.title_label.setStyleSheet(f"color: {COLOR_TEXT_MAIN}; font-size: 18px; font-weight: bold; font-family: 'Microsoft YaHei';")
+        self.title_label.setStyleSheet(f"color: {COLOR_TEXT_MAIN}; font-size: 22px; font-weight: bold; font-family: 'Microsoft YaHei';")
         layout.addWidget(self.title_label)
         
         layout.addStretch()
